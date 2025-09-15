@@ -1,4 +1,4 @@
-name: Build ARMv5 Binary
+name: Build Frontend
 
 on:
   workflow_dispatch:
@@ -7,77 +7,56 @@ on:
       - 'v*'
 
 jobs:
-  build-armv5:
+  build-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Create missing tsconfig.node.json
+        run: |
+          cat > tsconfig.node.json << 'EOL'
+          {
+            "compilerOptions": {
+              "composite": true,
+              "skipLibCheck": true,
+              "module": "ESNext",
+              "moduleResolution": "bundler",
+              "allowSyntheticDefaultImports": true,
+              "strict": true,
+              "moduleDetection": "force"
+            },
+            "include": [
+              "vite.config.ts",
+              "package.json"
+            ]
+          }
+          EOL
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.21'
+          node-version: '18'
+          cache: 'pnpm'
 
-      - name: Install build tools
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Fix HTML references (optional)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+          # 备份原文件
+          cp index.html index.html.backup
+          # 移除有问题的脚本引用或添加 type="module"
+          sed -i 's|<script src="/custom/index.js">|<script src="/custom/index.js" type="module">|g' index.html || true
 
-      - name: Install Go tools
-        run: |
-          go install github.com/go-bindata/go-bindata/...@latest
-          go install github.com/elazarl/go-bindata-assetfs/...@latest
+      - name: Build frontend
+        run: pnpm run build-only
 
-      - name: Build frontend assets
-        run: |
-          # 构建前端资源（如果需要）
-          npm install pnpm -g
-          pnpm install
-          pnpm run build
-          
-          # 将构建好的前端文件移动到 service/assets 目录
-          mkdir -p service/assets/web
-          cp -r dist/* service/assets/web/
-
-      - name: Generate embedded assets
-        run: |
-          cd service
-          go-bindata-assetfs -o=assets/bindata.go -pkg=assets assets/...
-
-      - name: Build ARMv5 binary
-        env:
-          GOOS: linux
-          GOARCH: arm
-          GOARM: 5
-          CC: arm-linux-gnueabi-gcc
-          CGO_ENABLED: 1
-        run: |
-          cd service
-          go build -o sun-panel-armv5 \
-            --ldflags="-X sun-panel/global.RUNCODE=release -s -w" \
-            main.go
-          
-          # 压缩二进制文件（可选）
-          strip sun-panel-armv5 || true
-          upx sun-panel-armv5 || true
-
-      - name: Verify binary
-        run: |
-          cd service
-          file sun-panel-armv5
-          readelf -h sun-panel-armv5 | grep -E '(Machine|Flags)'
-          ls -lh sun-panel-armv5
-
-      - name: Upload binary artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sun-panel-armv5-binary
-          path: service/sun-panel-armv5
-
-      - name: Create release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: service/sun-panel-armv5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: frontend-dist
+          path: dist/
