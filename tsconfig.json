@@ -21,3 +21,10 @@
   },
   "exclude": ["node_modules", "dist", "service"]
 }
+{
+  "compilerOptions": {
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    // 其他配置...
+  }
+}
