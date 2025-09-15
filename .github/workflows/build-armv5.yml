@@ -13,25 +13,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create missing tsconfig.node.json
-        run: |
-          cat > tsconfig.node.json << 'EOL'
-          {
-            "compilerOptions": {
-              "composite": true,
-              "skipLibCheck": true,
-              "module": "ESNext",
-              "moduleResolution": "bundler",
-              "allowSyntheticDefaultImports": true,
-              "strict": true,
-              "moduleDetection": "force"
-            },
-            "include": [
-              "vite.config.ts",
-              "package.json"
-            ]
-          }
-          EOL
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -39,21 +24,48 @@ jobs:
           node-version: '18'
           cache: 'pnpm'
 
-      - name: Install pnpm
-        run: npm install -g pnpm
+      - name: Verify pnpm installation
+        run: pnpm --version
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Fix HTML references (optional)
+      - name: Create missing config files
         run: |
-          # 备份原文件
-          cp index.html index.html.backup
-          # 移除有问题的脚本引用或添加 type="module"
-          sed -i 's|<script src="/custom/index.js">|<script src="/custom/index.js" type="module">|g' index.html || true
+          # 创建 tsconfig.node.json
+          if [ ! -f "tsconfig.node.json" ]; then
+            echo 'Creating tsconfig.node.json...'
+            cat > tsconfig.node.json << 'EOL'
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "moduleDetection": "force"
+  },
+  "include": [
+    "vite.config.ts",
+    "package.json"
+  ]
+}
+EOL
+          fi
+
+      - name: Fix HTML references
+        run: |
+          # 确保脚本标签有 type="module"
+          if [ -f "index.html" ]; then
+            sed -i 's|<script src="/custom/index.js">|<script src="/custom/index.js" type="module">|g' index.html || true
+          fi
 
       - name: Build frontend
         run: pnpm run build-only
+
+      - name: List build artifacts
+        run: ls -la dist/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
